@@ -11,8 +11,24 @@ const C = {
 const F = "'Lora','Georgia',serif";
 const M = "'SF Mono','Menlo',monospace";
 const uid = () => Math.random().toString(36).slice(2,9);
-const fmtDate = s => { try { return new Date(s).toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"}); } catch { return ""; }};
-const daysTo = s => { try { return Math.ceil((new Date(s)-new Date())/86400000); } catch { return 0; }};
+const pad2 = n => String(n).padStart(2,"0");
+const toYMD = (y,m,d) => `${y}-${pad2(m+1)}-${pad2(d)}`;
+const todayYMD = () => { const n=new Date(); return toYMD(n.getFullYear(),n.getMonth(),n.getDate()); };
+const parseYMD = s => {
+  if(!s||typeof s!=="string") return null;
+  const [y,m,d]=s.split("-").map(Number);
+  if(!y||!m||!d) return null;
+  return new Date(y,m-1,d);
+};
+const fmtDate = s => { try { const d=parseYMD(s); return d?d.toLocaleDateString("it-IT",{day:"numeric",month:"long",year:"numeric"}):""; } catch { return ""; }};
+const daysTo = s => {
+  try {
+    const d=parseYMD(s); if(!d) return 0;
+    const t=new Date(); t.setHours(0,0,0,0);
+    return Math.round((d-t)/86400000);
+  } catch { return 0; }
+};
+const isUpcoming = s => daysTo(s) >= 0;
 
 const PD = {
   4:{s:"seme di papavero",dim:"0.4cm",peso:"<1g",tri:1,headline:"Il cuore comincia a formarsi.",dev:"L'embrione si è appena annidato nell'utero. Il tubo neurale inizia a formarsi — diventerà cervello e midollo spinale.",highlights:["HCG già prodotto — il test è positivo","DNA unico già definito","Pesa meno di un granello di sale"],mamma:["Seno gonfio e sensibile","Stanchezza insolita","Possibile nausea precoce"],urgente:"Inizia l'acido folico 400mcg/die — riduce del 70% il rischio di difetti del tubo neurale.",esami:[],medicine:[{nome:"Acido folico",dose:"400mcg/die",motivo:"Riduce del 70% i difetti del tubo neurale",quando:"Prima colazione",link:"https://www.amazon.it/s?k=acido+folico+400mcg&tag=nido-21"},{nome:"Vitamina D3",dose:"1000 UI/die",motivo:"Essenziale per ossa e sistema immunitario",quando:"Con il pasto",link:"https://www.amazon.it/s?k=vitamina+d3+gravidanza&tag=nido-21"}]},
@@ -52,11 +68,13 @@ const NOTIZIE=[
 const SB_URL="https://qjjhyvdnclujyebrhudu.supabase.co";
 const SB_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFqamh5dmRuY2x1anllYnJodWR1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMDMzODMsImV4cCI6MjA5OTY3OTM4M30.BdxSOot_0Jyh4xn0Csh8MURXdFi0X8QMKsK7cfny2dE";
 const SBH={"Content-Type":"application/json","apikey":SB_KEY,"Authorization":"Bearer "+SB_KEY,"Prefer":"return=representation"};
-const sbGet=async(t,f="")=>{try{const r=await fetch(SB_URL+"/rest/v1/"+t+"?"+f,{headers:SBH});return r.json();}catch{return[];}};
-const sbPost=async(t,b)=>{try{const r=await fetch(SB_URL+"/rest/v1/"+t,{method:"POST",headers:SBH,body:JSON.stringify(b)});return r.json();}catch{return[];}};
-const sbPatch=async(t,f,b)=>{try{const r=await fetch(SB_URL+"/rest/v1/"+t+"?"+f,{method:"PATCH",headers:{...SBH},body:JSON.stringify(b)});return r.json();}catch{return[];}};
+const sbGet=async(t,f="")=>{try{const r=await fetch(SB_URL+"/rest/v1/"+t+"?"+f,{headers:SBH});const j=await r.json();return Array.isArray(j)?j:[];}catch{return[];}};
+const sbPost=async(t,b)=>{try{const r=await fetch(SB_URL+"/rest/v1/"+t,{method:"POST",headers:SBH,body:JSON.stringify(b)});const j=await r.json();return Array.isArray(j)?j:[];}catch{return[];}};
+const sbPatch=async(t,f,b)=>{try{const r=await fetch(SB_URL+"/rest/v1/"+t+"?"+f,{method:"PATCH",headers:{...SBH},body:JSON.stringify(b)});const j=await r.json();return Array.isArray(j)?j:[];}catch{return[];}};
 function getFamilyCode(){let c=localStorage.getItem("nido_family_code");if(!c){c=Math.random().toString(36).slice(2,8).toUpperCase();localStorage.setItem("nido_family_code",c);}return c;}
-function makeMember(id,role,color){return{id,role,color,nome:role==="papà"?"Papà":"Mamma",lavoro:"",salute:{acqua:0,acquaObiettivo:8,peso:0,benessere:0,integratori:role==="mamma"?["Acido folico 400mcg","Ferro 30mg","Vitamina D3 1000UI"]:["Vitamina D3 1000UI"],integratoriPresi:{}}};}
+function makeMember(id,role,color){return{id,role,color,nome:role==="papà"?"Papà":role==="mamma"?"Mamma":"Membro",lavoro:"",salute:{acqua:0,acquaObiettivo:8,peso:0,benessere:0,integratori:role==="mamma"?["Acido folico 400mcg","Ferro 30mg","Vitamina D3 1000UI"]:["Vitamina D3 1000UI"],integratoriPresi:{}}};}
+function roleId(role){return role==="papà"?"papa":role==="mamma"?"mamma":uid();}
+function roleColor(role){return role==="papà"?C.warm:role==="mamma"?C.blush:C.sage;}
 
 const INIT={
   onboardingDone:false,
@@ -109,13 +127,62 @@ function useStore(){
   return [d,setD,{syncOk,syncing,familyCode}];
 }
 
+function localTip(data,userId,tab){
+  const me=data.members.find(m=>m.id===userId);
+  const sw=data.baby.settimane;
+  const info=getPD(sw);
+  const prox=[...data.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||0);
+  const acqua=me?.salute?.acqua||0;
+  const goal=me?.salute?.acquaObiettivo||8;
+  const tips={
+    home: acqua<goal
+      ? `${me?.nome||"Ciao"}, sei a ${acqua}/${goal} bicchieri. Un sorso ora ti aiuta — e ricorda: ${info.urgente}`
+      : prox[0]
+        ? `Brava/o con l'acqua! Prossimo impegno: ${prox[0].titolo}${prox[0].data?` il ${fmtDate(prox[0].data)}`:""}.`
+        : `Settimana ${sw}: ${info.headline}`,
+    baby: `${info.headline} ${info.urgente}`,
+    salute: (info.medicine||[])[0]
+      ? `Questa settimana non dimenticare ${info.medicine[0].nome} (${info.medicine[0].dose}). Consulta sempre il ginecologo.`
+      : `Come stai oggi? Segna il benessere e bevi un bicchiere d'acqua.`,
+    agenda: prox[0]
+      ? `In agenda: ${prox[0].titolo}${prox[0].ora?` alle ${prox[0].ora}`:""}. Vuoi aggiungere altro?`
+      : `Nessun impegno in vista. Vale la pena prenotare i controlli della settimana ${sw}.`,
+    famiglia: `Condividi il codice famiglia con il partner così restano sincronizzati appuntamenti e task.`,
+    market: `Per la settimana ${sw} può servire: ${(info.medicine||[]).map(m=>m.nome).slice(0,2).join(" e ")||"integratori raccomandati"}.`,
+    ai: `Sono qui per gravidanza, medicine e burocrazia. Prova una delle domande rapide qui sotto.`,
+  };
+  return tips[tab]||tips.home;
+}
+
+function localAIAnswer(msg,data,userId){
+  const q=(msg||"").toLowerCase();
+  const sw=data.baby.settimane;
+  const info=getPD(sw);
+  const me=data.members.find(m=>m.id===userId);
+  if(/settimana|succede|beb[eè]|feto|bambin/.test(q))
+    return `Alla settimana ${sw} (${info.tri}° trimestre) il bebè è grande come ${info.s} (${info.dim}, ${info.peso}). ${info.headline} ${info.dev} Per dubbi clinici parla sempre con il tuo ginecologo.`;
+  if(/morfologic/.test(q))
+    return `L'ecografia morfologica si fa di solito tra la 18ª e la 21ª settimana. Serve a controllare anatomia, crescita e liquido amniotico. Prenotala per tempo: è l'esame chiave del secondo trimestre.`;
+  if(/integratori|medicine|folico|ferro|omega|paracetamolo|nausea/.test(q)){
+    const meds=(info.medicine||[]).map(m=>`• ${m.nome} ${m.dose} — ${m.motivo}`).join("\n")||"Segui le indicazioni del ginecologo.";
+    return `Per la settimana ${sw} le linee guida suggeriscono:\n${meds}\n\nIl paracetamolo è spesso considerato, ma dose e durata vanno confermate dal medico. Non iniziare integratori senza consulto.`;
+  }
+  if(/assegno|inps|bonus|isee|congedo|paternit|maternit|lavoro|diritti/.test(q))
+    return `In sintesi (Italia):\n• Assegno unico: richiedibile dal 7° mese via INPS/CAF.\n• Congedo paternità: 10 giorni obbligatori (+1 facoltativo) entro 5 mesi, retribuiti al 100%.\n• Congedo maternità: 5 mesi totali, indennità INPS ~80%.\n• Bonus bebè / ISEE: verifica requisiti aggiornati su inps.it.\nPer pratiche ufficiali usa il portale INPS o un CAF.`;
+  if(/dolor|dormire|sonno|acqua|bere/.test(q))
+    return `Dolori leggeri e stanchezza sono comuni intorno alla settimana ${sw}, ma dolore intenso, sanguinamento o movimenti ridotti richiedono pronto soccorso. Per il sonno: cuscino tra le ginocchia, lato sinistro se possibile. Obiettivo acqua: ${me?.salute?.acquaObiettivo||8} bicchieri/giorno.`;
+  return `Settimana ${sw}: ${info.headline}\nPriorità ora: ${info.urgente}\n\nPosso aiutarti su gravidanza, medicine, INPS/ASL e diritti. Scrivi pure la domanda in modo più specifico — e per decisioni sanitarie affidati al ginecologo.`;
+}
+
 function useGrillo(data,userId,tab){
   const [bubble,setBubble]=useState(null);
   const [loading,setLoading]=useState(false);
   const seenRef=useRef(new Set());
   const timerRef=useRef(null);
+  const dataRef=useRef(data);
+  dataRef.current=data;
   useEffect(()=>{
-    if(!userId||!data)return;
+    if(!userId||!dataRef.current)return;
     const key=tab+"-"+Math.floor(Date.now()/300000);
     if(seenRef.current.has(key))return;
     clearTimeout(timerRef.current);
@@ -124,17 +191,19 @@ function useGrillo(data,userId,tab){
       if(seenRef.current.has(key))return;
       seenRef.current.add(key);
       setLoading(true);
-      const me=data.members.find(m=>m.id===userId);
-      const sw=data.baby.settimane;
-      const info=getPD(sw);
-      const prox=[...data.appuntamenti].filter(a=>new Date(a.data)>=new Date()).sort((a,b)=>new Date(a.data)-new Date(b.data));
-      const sys="Sei il Grillo Parlante di NIDO. Dati: settimana "+sw+"/40. "+me?.nome+" e nella sezione '"+tab+"'. Acqua: "+(me?.salute?.acqua||0)+"/"+(me?.salute?.acquaObiettivo||8)+". Prossimo appuntamento: "+(prox[0]?prox[0].titolo+" il "+prox[0].data:"nessuno")+". Ora: "+new Date().getHours()+":00. "+info.headline+" "+info.urgente+". Genera UN SOLO suggerimento proattivo, max 2 frasi, pertinente alla sezione. Solo il testo.";
+      const d=dataRef.current;
+      let txt=null;
       try{
+        const me=d.members.find(m=>m.id===userId);
+        const sw=d.baby.settimane;
+        const info=getPD(sw);
+        const prox=[...d.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||0);
+        const sys="Sei il Grillo Parlante di NIDO. Dati: settimana "+sw+"/40. "+me?.nome+" e nella sezione '"+tab+"'. Acqua: "+(me?.salute?.acqua||0)+"/"+(me?.salute?.acquaObiettivo||8)+". Prossimo appuntamento: "+(prox[0]?prox[0].titolo+" il "+prox[0].data:"nessuno")+". Ora: "+new Date().getHours()+":00. "+info.headline+" "+info.urgente+". Genera UN SOLO suggerimento proattivo, max 2 frasi, pertinente alla sezione. Solo il testo.";
         const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:120,system:sys,messages:[{role:"user",content:"Suggerimento"}]})});
         const d2=await r.json();
-        const txt=d2.content?.[0]?.text;
-        if(txt)setBubble(txt);
+        txt=d2.content?.[0]?.text||null;
       }catch{}
+      setBubble(txt||localTip(d,userId,tab));
       setLoading(false);
     },3500);
     return()=>clearTimeout(timerRef.current);
@@ -165,9 +234,15 @@ function GrilloBubble({bubble,loading,onDismiss,onExpandAI}){
 }
 
 const CAT_C={bebè:C.blush,lavoro:C.warm,salute:C.sage,famiglia:C.sage};
-const mEmoji=id=>id==="papa"?"👨":id==="mamma"?"👩":"👤";
+const mEmoji=(id,members)=>{
+  const m=members?.find?.(x=>x.id===id);
+  const role=m?.role;
+  if(role==="papà"||id==="papa")return"👨";
+  if(role==="mamma"||id==="mamma")return"👩";
+  return"👤";
+};
 const mColor=(id,members)=>members.find(m=>m.id===id)?.color||C.sub;
-const mLabel=(id,members)=>{if(id==="entrambi")return "👫 Entrambi";const m=members.find(x=>x.id===id);return m?mEmoji(m.id)+" "+m.nome:id;};
+const mLabel=(id,members)=>{if(id==="entrambi")return "👫 Entrambi";const m=members.find(x=>x.id===id);return m?mEmoji(m.id,members)+" "+m.nome:id;};
 
 function Bar({pct,color,h=5}){return(<div style={{height:h,borderRadius:h,background:C.border,overflow:"hidden"}}><div style={{height:"100%",width:Math.min(Math.max(Number(pct)||0,0),100)+"%",background:color,borderRadius:h,transition:"width .4s ease"}}/></div>);}
 function Chip({color,children,sm}){return(<span style={{display:"inline-block",padding:sm?"2px 8px":"3px 11px",borderRadius:20,fontSize:sm?10:11,fontFamily:M,background:color+"15",color,border:"1px solid "+color+"25"}}>{children}</span>);}
@@ -207,7 +282,7 @@ function Home({data,setData,userId,openSheet,fire}){
   const me=data.members.find(m=>m.id===userId);
   const sw=data.baby.settimane;
   const info=getPD(sw);
-  const prox=[...data.appuntamenti].filter(a=>new Date(a.data)>=new Date()).sort((a,b)=>new Date(a.data)-new Date(b.data)).slice(0,3);
+  const prox=[...data.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||String(a.ora||"").localeCompare(String(b.ora||""))).slice(0,3);
   const open=data.tasks.filter(t=>!t.fatto);
   const today=new Date().toLocaleDateString("it-IT",{weekday:"long",day:"numeric",month:"long"});
   return (
@@ -223,13 +298,13 @@ function Home({data,setData,userId,openSheet,fire}){
         {info.urgente&&<div style={{marginTop:8,padding:"8px 12px",background:C.warm+"12",borderRadius:10}}><div style={{fontSize:12,color:C.warm,lineHeight:1.5}}>💡 {info.urgente}</div></div>}
       </Card>
       <Card>
-        <SRow style={{justifyContent:"space-between",marginBottom:12}}><SLabel>💧 Acqua oggi</SLabel><button onClick={()=>setData(d=>({...d,members:d.members.map(m=>m.id===userId?{...m,salute:{...m.salute,acqua:Math.min((m.salute.acqua||0)+1,m.salute.acquaObiettivo)}}:m)}))} style={{width:34,height:34,borderRadius:10,background:C.sky+"14",border:"1.5px solid "+C.sky+"22",fontSize:20,cursor:"pointer",color:C.sky,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button></SRow>
-        <div style={{display:"flex",gap:10}}>{data.members.slice(0,2).map(m=>(<div key={m.id} style={{flex:1,padding:"10px 12px",background:C.bg,borderRadius:14,border:"1px solid "+(m.id===userId?C.sky+"40":C.border)}}><div style={{fontSize:11,color:C.sub,marginBottom:4}}>{mEmoji(m.id)} {m.nome}</div><div style={{fontSize:20,fontWeight:300,color:C.sky}}>{m.salute?.acqua||0}<span style={{fontSize:12,color:C.faint}}>/{m.salute?.acquaObiettivo||8}</span></div><Bar pct={((m.salute?.acqua||0)/(m.salute?.acquaObiettivo||8))*100} color={C.sky} h={4}/></div>))}</div>
+        <SRow style={{justifyContent:"space-between",marginBottom:12}}><SLabel>💧 Acqua oggi</SLabel><button onClick={()=>setData(d=>({...d,members:d.members.map(m=>m.id===userId?{...m,salute:{...m.salute,acqua:Math.min((m.salute.acqua||0)+1,m.salute.acquaObiettivo||8)}}:m)}))} style={{width:34,height:34,borderRadius:10,background:C.sky+"14",border:"1.5px solid "+C.sky+"22",fontSize:20,cursor:"pointer",color:C.sky,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button></SRow>
+        <div style={{display:"flex",gap:10}}>{data.members.slice(0,2).map(m=>(<div key={m.id} style={{flex:1,padding:"10px 12px",background:C.bg,borderRadius:14,border:"1px solid "+(m.id===userId?C.sky+"40":C.border)}}><div style={{fontSize:11,color:C.sub,marginBottom:4}}>{mEmoji(m.id,data.members)} {m.nome}</div><div style={{fontSize:20,fontWeight:300,color:C.sky}}>{m.salute?.acqua||0}<span style={{fontSize:12,color:C.faint}}>/{m.salute?.acquaObiettivo||8}</span></div><Bar pct={((m.salute?.acqua||0)/(m.salute?.acquaObiettivo||8))*100} color={C.sky} h={4}/></div>))}</div>
       </Card>
       <Card>
         <SRow style={{justifyContent:"space-between",marginBottom:14}}><SLabel>📅 In agenda</SLabel><button onClick={()=>openSheet("appt")} style={{background:"none",border:"none",color:C.warm,fontSize:14,cursor:"pointer",fontFamily:F,fontWeight:500}}>+ Aggiungi</button></SRow>
         {prox.length===0&&<div style={{fontSize:14,color:C.faint,textAlign:"center",padding:"10px 0"}}>Niente in programma</div>}
-        {prox.map((a,i)=>(<div key={a.id}>{i>0&&<Hr/>}<SRow><div style={{width:46,textAlign:"center",background:(CAT_C[a.tipo]||C.warm)+"10",borderRadius:14,padding:"8px 4px",flexShrink:0}}><div style={{fontSize:19,fontWeight:600,color:CAT_C[a.tipo]||C.warm,lineHeight:1}}>{new Date(a.data).getDate()}</div><div style={{fontSize:9,color:C.sub,fontFamily:M,textTransform:"uppercase",marginTop:2}}>{new Date(a.data).toLocaleString("it-IT",{month:"short"})}</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:15,color:C.text,fontWeight:500,marginBottom:4}}>{a.titolo}</div><div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>{a.ora&&<span style={{fontSize:12,color:C.sub,fontFamily:M}}>{a.ora}</span>}<Chip color={CAT_C[a.tipo]||C.warm} sm>{a.tipo}</Chip><Chip color={a.chi==="entrambi"?C.sage:mColor(a.chi,data.members)} sm>{mLabel(a.chi,data.members)}</Chip>{daysTo(a.data)===0&&<Chip color={C.blush} sm>oggi</Chip>}{daysTo(a.data)===1&&<Chip color={C.warm} sm>domani</Chip>}{daysTo(a.data)>1&&<span style={{fontSize:11,color:C.faint}}>tra {daysTo(a.data)}g</span>}</div></div><button onClick={()=>openSheet("editAppt",a)} style={{background:"none",border:"none",color:C.faint,fontSize:22,cursor:"pointer",padding:"4px 6px"}}>›</button></SRow></div>))}
+        {prox.map((a,i)=>(<div key={a.id}>{i>0&&<Hr/>}<SRow><div style={{width:46,textAlign:"center",background:(CAT_C[a.tipo]||C.warm)+"10",borderRadius:14,padding:"8px 4px",flexShrink:0}}><div style={{fontSize:19,fontWeight:600,color:CAT_C[a.tipo]||C.warm,lineHeight:1}}>{(parseYMD(a.data)||new Date()).getDate()}</div><div style={{fontSize:9,color:C.sub,fontFamily:M,textTransform:"uppercase",marginTop:2}}>{(parseYMD(a.data)||new Date()).toLocaleString("it-IT",{month:"short"})}</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:15,color:C.text,fontWeight:500,marginBottom:4}}>{a.titolo}</div><div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>{a.ora&&<span style={{fontSize:12,color:C.sub,fontFamily:M}}>{a.ora}</span>}<Chip color={CAT_C[a.tipo]||C.warm} sm>{a.tipo}</Chip><Chip color={a.chi==="entrambi"?C.sage:mColor(a.chi,data.members)} sm>{mLabel(a.chi,data.members)}</Chip>{daysTo(a.data)===0&&<Chip color={C.blush} sm>oggi</Chip>}{daysTo(a.data)===1&&<Chip color={C.warm} sm>domani</Chip>}{daysTo(a.data)>1&&<span style={{fontSize:11,color:C.faint}}>tra {daysTo(a.data)}g</span>}</div></div><button onClick={()=>openSheet("editAppt",a)} style={{background:"none",border:"none",color:C.faint,fontSize:22,cursor:"pointer",padding:"4px 6px"}}>›</button></SRow></div>))}
       </Card>
       <Card>
         <SRow style={{justifyContent:"space-between",marginBottom:14}}><SLabel>{"✓ Da fare ("+open.length+")"}</SLabel><button onClick={()=>openSheet("task")} style={{background:"none",border:"none",color:C.warm,fontSize:14,cursor:"pointer",fontFamily:F,fontWeight:500}}>+ Aggiungi</button></SRow>
@@ -245,6 +320,7 @@ function Baby({data,setData,openSheet}){
   const info=getPD(sw);
   const done=data.baby.check.filter(c=>c.fatto).length;
   const [exSw,setExSw]=useState(sw);
+  useEffect(()=>{setExSw(sw);},[sw]);
   const exInfo=getPD(exSw);
   return (
     <div>
@@ -298,8 +374,8 @@ function ContrazioniTimer({data,setData}){
       <div style={{textAlign:"center",marginBottom:16}}><div style={{fontSize:52,fontWeight:200,color:c.attivo?C.blush:C.faint,fontFamily:M,lineHeight:1,transition:"color .3s"}}>{fmt(elapsed)}</div><div style={{fontSize:12,color:C.faint,marginTop:6,fontFamily:M}}>{c.attivo?"IN CORSO":"IN ATTESA"}</div></div>
       <SRow style={{justifyContent:"center",gap:12,marginBottom:c.lista.length>0?16:0}}>
         {!c.attivo
-          ? <button onClick={()=>setData(d=>({...d,contrazioni:{...d.contrazioni,attivo:true,inizio:Date.now()}}))} style={{padding:"12px 32px",background:C.blush,color:C.surface,border:"none",borderRadius:14,fontSize:16,cursor:"pointer",fontFamily:F,fontWeight:500}}>Inizia</button>
-          : <button onClick={()=>setData(d=>{const dur=Math.floor((Date.now()-(d.contrazioni.inizio||Date.now()))/1000);return{...d,contrazioni:{...d.contrazioni,attivo:false,inizio:null,lista:[...d.contrazioni.lista,{inizio:d.contrazioni.inizio,durata:dur,id:uid()}]}};})} style={{padding:"12px 32px",background:C.text,color:C.surface,border:"none",borderRadius:14,fontSize:16,cursor:"pointer",fontFamily:F,fontWeight:500}}>Fine</button>}
+          ? <button onClick={()=>setData(d=>({...d,contrazioni:{...(d.contrazioni||{lista:[]}),attivo:true,inizio:Date.now(),lista:(d.contrazioni&&d.contrazioni.lista)||[]}}))} style={{padding:"12px 32px",background:C.blush,color:C.surface,border:"none",borderRadius:14,fontSize:16,cursor:"pointer",fontFamily:F,fontWeight:500}}>Inizia</button>
+          : <button onClick={()=>setData(d=>{const prev=d.contrazioni||{attivo:false,lista:[],inizio:null};const dur=Math.floor((Date.now()-(prev.inizio||Date.now()))/1000);return{...d,contrazioni:{...prev,attivo:false,inizio:null,lista:[...(prev.lista||[]),{inizio:prev.inizio,durata:dur,id:uid()}]}};})} style={{padding:"12px 32px",background:C.text,color:C.surface,border:"none",borderRadius:14,fontSize:16,cursor:"pointer",fontFamily:F,fontWeight:500}}>Fine</button>}
       </SRow>
       {c.lista.length>0&&(<div><div style={{fontSize:11,color:C.faint,fontFamily:M,letterSpacing:.8,textTransform:"uppercase",marginBottom:8}}>Ultime ({c.lista.length})</div>{avg&&<div style={{fontSize:13,color:C.sub,marginBottom:8}}>Intervallo medio: <span style={{color:avg<300?C.blush:C.sage,fontWeight:500}}>{Math.floor(avg/60)}m {avg%60}s</span></div>}{c.lista.slice(-4).reverse().map((x,i)=>(<div key={x.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:i<3?"1px solid "+C.border:"none"}}><span style={{fontSize:13,color:C.sub}}>{new Date(x.inizio).toLocaleTimeString("it-IT",{hour:"2-digit",minute:"2-digit"})}</span><span style={{fontSize:13,color:C.text,fontFamily:M}}>{fmt(x.durata)}</span></div>))}</div>)}
     </Card>
@@ -321,13 +397,13 @@ function Salute({data,setData,userId}){
         <SLabel>✨ Come stai oggi?</SLabel>
         <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:8}}>{STAR.map((e,i)=>(<button key={i} onClick={()=>upd(sl=>({...sl,benessere:i+1}))} style={{fontSize:i+1===(s.benessere||0)?32:24,background:"none",border:"none",cursor:"pointer",transition:"font-size .15s",padding:"4px"}}>{e}</button>))}</div>
         {s.benessere>0&&<div style={{textAlign:"center",fontSize:13,color:C.sub,marginBottom:4}}>{["Una giornata difficile.","Abbastanza bene.","Bene.","Molto bene!","Giornata meravigliosa! 🌟"][s.benessere-1]}</div>}
-        {partner?.salute?.benessere>0&&(<div style={{marginTop:10,padding:"8px 12px",background:C.bg,borderRadius:10,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>{mEmoji(partner.id)}</span><span style={{fontSize:13,color:C.sub}}>{partner.nome}: </span><span style={{fontSize:18}}>{STAR[(partner.salute.benessere||1)-1]}</span></div>)}
+        {partner?.salute?.benessere>0&&(<div style={{marginTop:10,padding:"8px 12px",background:C.bg,borderRadius:10,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:16}}>{mEmoji(partner.id,data.members)}</span><span style={{fontSize:13,color:C.sub}}>{partner.nome}: </span><span style={{fontSize:18}}>{STAR[(partner.salute.benessere||1)-1]}</span></div>)}
       </Card>
       <Card>
-        <SRow style={{justifyContent:"space-between",marginBottom:14}}><SLabel>💧 Acqua oggi</SLabel><button onClick={()=>upd(sl=>({...sl,acqua:Math.min((sl.acqua||0)+1,sl.acquaObiettivo)}))} style={{width:36,height:36,borderRadius:10,background:C.sky+"14",border:"1.5px solid "+C.sky+"22",fontSize:22,cursor:"pointer",color:C.sky,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button></SRow>
-        <div style={{fontSize:26,fontWeight:300,color:C.sky,marginBottom:8}}>{s.acqua||0}<span style={{fontSize:14,color:C.faint}}>/{s.acquaObiettivo} bicchieri</span></div>
-        <Bar pct={((s.acqua||0)/s.acquaObiettivo)*100} color={C.sky} h={7}/>
-        <div style={{display:"flex",gap:5,marginTop:10,flexWrap:"wrap"}}>{Array.from({length:s.acquaObiettivo},(_,i)=>(<div key={i} style={{width:28,height:28,borderRadius:8,background:i<(s.acqua||0)?C.sky+"20":C.bg,border:"1.5px solid "+(i<(s.acqua||0)?C.sky+"50":C.border),display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{i<(s.acqua||0)?"💧":"·"}</div>))}</div>
+        <SRow style={{justifyContent:"space-between",marginBottom:14}}><SLabel>💧 Acqua oggi</SLabel><button onClick={()=>upd(sl=>({...sl,acqua:Math.min((sl.acqua||0)+1,sl.acquaObiettivo||8)}))} style={{width:36,height:36,borderRadius:10,background:C.sky+"14",border:"1.5px solid "+C.sky+"22",fontSize:22,cursor:"pointer",color:C.sky,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button></SRow>
+        <div style={{fontSize:26,fontWeight:300,color:C.sky,marginBottom:8}}>{s.acqua||0}<span style={{fontSize:14,color:C.faint}}>/{s.acquaObiettivo||8} bicchieri</span></div>
+        <Bar pct={((s.acqua||0)/(s.acquaObiettivo||8))*100} color={C.sky} h={7}/>
+        <div style={{display:"flex",gap:5,marginTop:10,flexWrap:"wrap"}}>{Array.from({length:s.acquaObiettivo||8},(_,i)=>(<div key={i} style={{width:28,height:28,borderRadius:8,background:i<(s.acqua||0)?C.sky+"20":C.bg,border:"1.5px solid "+(i<(s.acqua||0)?C.sky+"50":C.border),display:"flex",alignItems:"center",justifyContent:"center",fontSize:13}}>{i<(s.acqua||0)?"💧":"·"}</div>))}</div>
       </Card>
       <Card>
         <SLabel>⚖️ Peso questa settimana</SLabel>
@@ -368,9 +444,9 @@ function Agenda({data,setData,openSheet}){
   const firstDay=(new Date(month.getFullYear(),month.getMonth(),1).getDay()+6)%7;
   const mesi=["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
   const giorni=["L","M","M","G","V","S","D"];
-  const eventsForDay=day=>{const ds=new Date(month.getFullYear(),month.getMonth(),day).toISOString().slice(0,10);return data.appuntamenti.filter(a=>a.data===ds);};
+  const eventsForDay=day=>{const ds=toYMD(month.getFullYear(),month.getMonth(),day);return data.appuntamenti.filter(a=>a.data===ds);};
   const isToday_=day=>today.getFullYear()===month.getFullYear()&&today.getMonth()===month.getMonth()&&today.getDate()===day;
-  const upcoming=[...data.appuntamenti].filter(a=>new Date(a.data)>=today).sort((a,b)=>new Date(a.data)-new Date(b.data));
+  const upcoming=[...data.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||String(a.ora||"").localeCompare(String(b.ora||"")));
   return (
     <div>
       <Card>
@@ -378,14 +454,14 @@ function Agenda({data,setData,openSheet}){
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>{giorni.map(g=><div key={g} style={{textAlign:"center",fontSize:10,color:C.faint,fontFamily:M,padding:"4px 0"}}>{g}</div>)}</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
           {Array.from({length:firstDay},(_,i)=><div key={"e"+i}/>)}
-          {Array.from({length:daysInMonth},(_,i)=>{const day=i+1;const events=eventsForDay(day);const tod=isToday_(day);return(<div key={day} onClick={()=>openSheet("appt")} style={{padding:"6px 2px",textAlign:"center",cursor:"pointer",borderRadius:8,background:tod?C.warm+"15":"transparent",border:tod?"1.5px solid "+C.warm+"40":"1px solid transparent"}}><div style={{fontSize:13,fontWeight:tod?600:400,color:tod?C.warm:C.text}}>{day}</div>{events.length>0&&<div style={{display:"flex",justifyContent:"center",gap:2,marginTop:2}}>{events.slice(0,3).map((e,ei)=><div key={ei} style={{width:4,height:4,borderRadius:2,background:CAT_C[e.tipo]||C.warm}}/>)}</div>}</div>);})}
+          {Array.from({length:daysInMonth},(_,i)=>{const day=i+1;const events=eventsForDay(day);const tod=isToday_(day);const dayDate=toYMD(month.getFullYear(),month.getMonth(),day);return(<div key={day} onClick={()=>openSheet("appt",{data:dayDate})} style={{padding:"6px 2px",textAlign:"center",cursor:"pointer",borderRadius:8,background:tod?C.warm+"15":"transparent",border:tod?"1.5px solid "+C.warm+"40":"1px solid transparent"}}><div style={{fontSize:13,fontWeight:tod?600:400,color:tod?C.warm:C.text}}>{day}</div>{events.length>0&&<div style={{display:"flex",justifyContent:"center",gap:2,marginTop:2}}>{events.slice(0,3).map((e,ei)=><div key={ei} style={{width:4,height:4,borderRadius:2,background:CAT_C[e.tipo]||C.warm}}/>)}</div>}</div>);})}
         </div>
       </Card>
       <button onClick={()=>openSheet("appt")} style={{width:"100%",padding:"14px",background:C.warm,color:C.surface,border:"none",borderRadius:16,fontSize:15,cursor:"pointer",fontFamily:F,fontWeight:500,marginBottom:12}}>+ Aggiungi evento</button>
       <Card>
         <SLabel>{"📋 Prossimi eventi ("+upcoming.length+")"}</SLabel>
         {upcoming.length===0&&<div style={{fontSize:14,color:C.faint,textAlign:"center",padding:"10px 0"}}>Niente in programma</div>}
-        {upcoming.map((a,i)=>(<div key={a.id}>{i>0&&<Hr/>}<SRow><div style={{width:52,background:(CAT_C[a.tipo]||C.warm)+"10",borderRadius:14,padding:"8px 4px",textAlign:"center",flexShrink:0}}><div style={{fontSize:18,fontWeight:600,color:CAT_C[a.tipo]||C.warm,lineHeight:1}}>{new Date(a.data).getDate()}</div><div style={{fontSize:9,color:C.sub,fontFamily:M,textTransform:"uppercase",marginTop:2}}>{mesi[new Date(a.data).getMonth()]}</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:15,color:C.text,fontWeight:500,marginBottom:4}}>{a.titolo}</div><div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>{a.ora&&<span style={{fontSize:12,color:C.sub,fontFamily:M}}>{a.ora}</span>}<Chip color={CAT_C[a.tipo]||C.warm} sm>{a.tipo}</Chip><Chip color={a.chi==="entrambi"?C.sage:mColor(a.chi,data.members)} sm>{mLabel(a.chi,data.members)}</Chip></div>{a.note&&<div style={{fontSize:12,color:C.faint,marginTop:3}}>{a.note}</div>}</div><button onClick={()=>openSheet("editAppt",a)} style={{background:"none",border:"none",color:C.faint,fontSize:22,cursor:"pointer",padding:"4px 6px"}}>›</button></SRow></div>))}
+        {upcoming.map((a,i)=>(<div key={a.id}>{i>0&&<Hr/>}<SRow><div style={{width:52,background:(CAT_C[a.tipo]||C.warm)+"10",borderRadius:14,padding:"8px 4px",textAlign:"center",flexShrink:0}}><div style={{fontSize:18,fontWeight:600,color:CAT_C[a.tipo]||C.warm,lineHeight:1}}>{(parseYMD(a.data)||new Date()).getDate()}</div><div style={{fontSize:9,color:C.sub,fontFamily:M,textTransform:"uppercase",marginTop:2}}>{mesi[(parseYMD(a.data)||new Date()).getMonth()]}</div></div><div style={{flex:1,minWidth:0}}><div style={{fontSize:15,color:C.text,fontWeight:500,marginBottom:4}}>{a.titolo}</div><div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>{a.ora&&<span style={{fontSize:12,color:C.sub,fontFamily:M}}>{a.ora}</span>}<Chip color={CAT_C[a.tipo]||C.warm} sm>{a.tipo}</Chip><Chip color={a.chi==="entrambi"?C.sage:mColor(a.chi,data.members)} sm>{mLabel(a.chi,data.members)}</Chip></div>{a.note&&<div style={{fontSize:12,color:C.faint,marginTop:3}}>{a.note}</div>}</div><button onClick={()=>openSheet("editAppt",a)} style={{background:"none",border:"none",color:C.faint,fontSize:22,cursor:"pointer",padding:"4px 6px"}}>›</button></SRow></div>))}
       </Card>
     </div>
   );
@@ -410,7 +486,7 @@ function Famiglia({data,setData,openSheet,familyCode}){
       <JoinCard/>
       <Card>
         <SRow style={{justifyContent:"space-between",marginBottom:14}}><SLabel>👨‍👩‍👶 La vostra famiglia</SLabel><button onClick={()=>openSheet("addMember")} style={{background:"none",border:"none",color:C.warm,fontSize:14,cursor:"pointer",fontFamily:F,fontWeight:500}}>+ Aggiungi</button></SRow>
-        {data.members.map((m,i)=>(<div key={m.id}>{i>0&&<Hr/>}<SRow><div style={{width:46,height:46,borderRadius:16,background:m.color+"14",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{mEmoji(m.id)}</div><div style={{flex:1}}><div style={{fontSize:15,color:C.text,fontWeight:500}}>{m.nome}</div><div style={{fontSize:13,color:C.sub}}>{m.lavoro||m.role}</div></div><button onClick={()=>openSheet("editMember",m)} style={{background:"none",border:"none",color:C.faint,fontSize:22,cursor:"pointer",padding:"4px 6px"}}>›</button></SRow></div>))}
+        {data.members.map((m,i)=>(<div key={m.id}>{i>0&&<Hr/>}<SRow><div style={{width:46,height:46,borderRadius:16,background:m.color+"14",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{mEmoji(m.id,data.members)}</div><div style={{flex:1}}><div style={{fontSize:15,color:C.text,fontWeight:500}}>{m.nome}</div><div style={{fontSize:13,color:C.sub}}>{m.lavoro||m.role}</div></div><button onClick={()=>openSheet("editMember",m)} style={{background:"none",border:"none",color:C.faint,fontSize:22,cursor:"pointer",padding:"4px 6px"}}>›</button></SRow></div>))}
       </Card>
       <Card>
         <SRow style={{justifyContent:"space-between",marginBottom:14}}><SLabel>🏠 Task famiglia</SLabel><button onClick={()=>openSheet("task","famiglia")} style={{background:"none",border:"none",color:C.warm,fontSize:14,cursor:"pointer",fontFamily:F,fontWeight:500}}>+ Aggiungi</button></SRow>
@@ -431,7 +507,7 @@ function AI({data,userId,grilloMsg}){
   const info=getPD(data.baby.settimane);
   const cats=[{l:"🤱 Gravidanza",qs:["Cosa succede alla settimana "+data.baby.settimane+"?","Quando fare la morfologica?","Dolori normali in gravidanza?","Come dormire meglio?"]},{l:"💊 Medicine",qs:["Quali integratori alla settimana "+data.baby.settimane+"?","Posso prendere il paracetamolo?","Cosa fare per la nausea?","Integratori per il papà?"]},{l:"📋 Burocrazia",qs:["Come richiedere l'assegno unico?","Congedo paternità: come funziona?","Bonus bebè INPS 2026?","Come calcolare l'ISEE?"]},{l:"💼 Diritti",qs:["Quando comunicare la gravidanza al lavoro?","Diritti in gravidanza?","Congedo maternità: quanti mesi?","Quanti giorni di paternità ho?"]}];
   const sys="Sei un assistente familiare italiano esperto. Parli con "+(me?.nome||"un genitore")+" ("+me?.role+"). Gravidanza: settimana "+data.baby.settimane+"/40, "+info.tri+"° trimestre. "+info.headline+" Medicine raccomandate: "+((info.medicine||[]).map(m=>m.nome+" "+m.dose).join(", "))+". Rispondi in italiano, tono caldo. Max 4-5 frasi. Per medicine, indica sempre di consultare il ginecologo.";
-  const send=async(txt)=>{const msg=txt||inp.trim();if(!msg||loading)return;setInp("");setMsgs(p=>[...p,{role:"user",text:msg}]);setLoading(true);try{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...msgs.filter((_,i)=>i>0).map(m=>({role:m.role,content:m.text})),{role:"user",content:msg}]})});const d=await r.json();setMsgs(p=>[...p,{role:"assistant",text:d.content?.[0]?.text||"Non riesco a rispondere ora."}]);}catch{setMsgs(p=>[...p,{role:"assistant",text:"Connessione assente. Riprova."}]);}setLoading(false);};
+  const send=async(txt)=>{const msg=txt||inp.trim();if(!msg||loading)return;setInp("");setMsgs(p=>[...p,{role:"user",text:msg}]);setLoading(true);try{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...msgs.filter((_,i)=>i>0).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.text})),{role:"user",content:msg}]})});const d=await r.json();const txtOut=d.content?.[0]?.text;setMsgs(p=>[...p,{role:"assistant",text:txtOut||localAIAnswer(msg,data,userId)}]);}catch{setMsgs(p=>[...p,{role:"assistant",text:localAIAnswer(msg,data,userId)}]);}setLoading(false);};
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 160px)"}}>
       <div style={{flex:1,overflowY:"auto",paddingBottom:8}}>
@@ -468,13 +544,15 @@ function Onboarding({data,setData,onComplete}){
   const next=from=>{const i=order.indexOf(from);if(i<order.length-1)transTo(order[i+1]);};
   const back=from=>{const i=order.indexOf(from);if(i>0)transTo(order[i-1]);};
   const finish=enterAs=>{
-    const membA={...makeMember("papa",personaA.role,personaA.role==="papà"?C.warm:C.blush),nome:personaA.nome||personaA.role,lavoro:personaA.lavoro,eta:+personaA.eta||null};
-    const membB={...makeMember("mamma",personaB.role,personaB.role==="papà"?C.warm:C.blush),nome:personaB.nome||personaB.role,lavoro:personaB.lavoro,eta:+personaB.eta||null};
+    const idA=roleId(personaA.role);
+    const idB=personaB.role===personaA.role?uid():roleId(personaB.role);
+    const membA={...makeMember(idA,personaA.role,roleColor(personaA.role)),nome:personaA.nome||(personaA.role==="papà"?"Papà":personaA.role==="mamma"?"Mamma":"Tu"),lavoro:personaA.lavoro,eta:+personaA.eta||null};
+    const membB={...makeMember(idB,personaB.role,roleColor(personaB.role)),nome:personaB.nome||(personaB.role==="papà"?"Papà":personaB.role==="mamma"?"Mamma":"Partner"),lavoro:personaB.lavoro,eta:+personaB.eta||null};
     setData(d=>({...d,onboardingDone:true,members:[membA,membB],baby:{...d.baby,nome:babyData.nome,settimane:Math.max(1,Math.min(42,+babyData.settimane||24)),dataPresunta:babyData.dataPresunta||d.baby.dataPresunta,sesso:babyData.sesso}}));
-    onComplete(enterAs==="a"?"papa":"mamma");
+    onComplete(enterAs==="a"?idA:idB);
   };
   if(phase==="splash")return(<OWrap vis={vis}><div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}><div style={{animation:"fadeUp .9s ease .2s both",fontSize:11,color:C.faint,fontFamily:M,letterSpacing:4,marginBottom:20,textTransform:"uppercase"}}>Benvenuti in</div><div style={{animation:"fadeUp .9s ease .4s both",fontSize:84,color:C.warm,lineHeight:1,letterSpacing:"-3px",fontWeight:400,fontStyle:"italic"}}>Nido</div><div style={{animation:"fadeUp .9s ease .8s both",fontSize:15,color:C.sub,marginTop:20,textAlign:"center",lineHeight:1.7}}>The home your family<br/>always deserved.</div><div style={{animation:"fadeUp .9s ease 1.2s both",marginTop:48,display:"flex",gap:6}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:3,background:i===1?C.warm:C.border}}/>)}</div></div></OWrap>);
-  if(phase==="welcome")return(<OWrap vis={vis}><div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto"}}><OStepWrap step={0}><div style={{paddingTop:32}}><div style={{fontSize:11,color:C.warm,fontFamily:M,letterSpacing:2,marginBottom:20,textTransform:"uppercase"}}>NIDO</div><OH>La vostra famiglia merita di più.</OH><OSub>Nido vi aiuta a vivere la gravidanza, organizzare la vita insieme e non perdere nulla. Ci vogliono 2 minuti.</OSub><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:32}}>{[["🤱","Gravidanza settimana per settimana — dati clinici reali"],["💊","Medicine e integratori consigliati per ogni settimana"],["📅","Agenda condivisa e calendario famiglia"],["✦","Grillo Parlante AI — suggerimenti proattivi sempre"]].map(([e,t])=>(<div key={t} style={{display:"flex",gap:14,alignItems:"flex-start",padding:"14px 16px",background:C.surface,borderRadius:16,boxShadow:C.sh,border:"1px solid "+C.border}}><span style={{fontSize:20}}>{e}</span><span style={{fontSize:14,color:C.sub,lineHeight:1.5}}>{t}</span></div>))}</div><button onClick={()=>transTo("chi")} style={{width:"100%",padding:"16px",background:C.warm,color:C.surface,border:"none",borderRadius:16,fontSize:17,fontFamily:F,fontWeight:500,cursor:"pointer"}}>Iniziamo →</button><div style={{textAlign:"center",fontSize:12,color:C.faint,marginTop:14}}>Nessun account richiesto · I dati restano sul dispositivo</div></div></OStepWrap></div></OWrap>);
+  if(phase==="welcome")return(<OWrap vis={vis}><div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto"}}><OStepWrap step={0}><div style={{paddingTop:32}}><div style={{fontSize:11,color:C.warm,fontFamily:M,letterSpacing:2,marginBottom:20,textTransform:"uppercase"}}>NIDO</div><OH>La vostra famiglia merita di più.</OH><OSub>Nido vi aiuta a vivere la gravidanza, organizzare la vita insieme e non perdere nulla. Ci vogliono 2 minuti.</OSub><div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:32}}>{[["🤱","Gravidanza settimana per settimana — dati clinici reali"],["💊","Medicine e integratori consigliati per ogni settimana"],["📅","Agenda condivisa e calendario famiglia"],["✦","Grillo Parlante AI — suggerimenti proattivi sempre"]].map(([e,t])=>(<div key={t} style={{display:"flex",gap:14,alignItems:"flex-start",padding:"14px 16px",background:C.surface,borderRadius:16,boxShadow:C.sh,border:"1px solid "+C.border}}><span style={{fontSize:20}}>{e}</span><span style={{fontSize:14,color:C.sub,lineHeight:1.5}}>{t}</span></div>))}</div><button onClick={()=>transTo("chi")} style={{width:"100%",padding:"16px",background:C.warm,color:C.surface,border:"none",borderRadius:16,fontSize:17,fontFamily:F,fontWeight:500,cursor:"pointer"}}>Iniziamo →</button><div style={{textAlign:"center",fontSize:12,color:C.faint,marginTop:14,marginBottom:24}}>Nessun account richiesto · I dati restano sul dispositivo</div><JoinCard/></div></OStepWrap></div></OWrap>);
   if(phase==="chi")return(<OWrap vis={vis}><div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto"}}><OStepWrap step={1} onBack={()=>back("chi")}><div style={{paddingTop:24}}><OH>Chi sta configurando l'app?</OH><OSub>Iniziamo da te. Il partner la configurerà dopo con il codice famiglia.</OSub><div style={{display:"flex",gap:10,marginBottom:24}}><ORoleOpt label="Sono il papà" value="papa" current={chi} onSelect={()=>{setChi("papa");setA(p=>({...p,role:"papà"}));setB(p=>({...p,role:"mamma"}));}} emoji="👨"/><ORoleOpt label="Sono la mamma" value="mamma" current={chi} onSelect={()=>{setChi("mamma");setA(p=>({...p,role:"mamma"}));setB(p=>({...p,role:"papà"}));}} emoji="👩"/></div><button onClick={()=>{if(!chi)return;next("chi");}} style={{width:"100%",padding:"16px",background:chi?C.warm:C.faint,color:C.surface,border:"none",borderRadius:16,fontSize:16,fontFamily:F,fontWeight:500,cursor:chi?"pointer":"default"}}>Continua →</button></div></OStepWrap></div></OWrap>);
   if(phase==="persona_a")return(<OWrap vis={vis}><div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto"}}><OStepWrap step={2} onBack={()=>back("persona_a")}><div style={{paddingTop:24}}><div style={{fontSize:32,marginBottom:8}}>{chi==="papa"?"👨":"👩"}</div><OH>Raccontaci di te</OH><OSub>Questi dati personalizzano l'esperienza per te.</OSub><FRow label="Il tuo nome *"><input style={iS} placeholder={chi==="papa"?"Es. Marco":"Es. Chiara"} value={personaA.nome} onChange={e=>setA(p=>({...p,nome:e.target.value}))}/></FRow><FRow label="Età"><input type="number" style={iS} placeholder="Es. 32" value={personaA.eta} onChange={e=>setA(p=>({...p,eta:e.target.value}))} min={18} max={80}/></FRow><FRow label="Lavoro"><input style={iS} placeholder="Es. Architetto, insegnante…" value={personaA.lavoro} onChange={e=>setA(p=>({...p,lavoro:e.target.value}))}/></FRow><button onClick={()=>{if(!personaA.nome.trim())return;next("persona_a");}} style={{width:"100%",padding:"16px",background:personaA.nome.trim()?C.warm:C.faint,color:C.surface,border:"none",borderRadius:16,fontSize:16,fontFamily:F,fontWeight:500,cursor:personaA.nome.trim()?"pointer":"default",marginTop:8}}>Continua →</button><button onClick={()=>next("persona_a")} style={{width:"100%",padding:"12px",background:"none",color:C.faint,border:"none",fontSize:13,fontFamily:F,cursor:"pointer",marginTop:8}}>Salta per ora</button></div></OStepWrap></div></OWrap>);
   if(phase==="persona_b")return(<OWrap vis={vis}><div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto"}}><OStepWrap step={3} onBack={()=>back("persona_b")}><div style={{paddingTop:24}}><div style={{fontSize:32,marginBottom:8}}>{chi==="papa"?"👩":"👨"}</div><OH>E il tuo partner?</OH><OSub>Potrà completare i suoi dati dal suo dispositivo.</OSub><FRow label="Nome"><input style={iS} placeholder={chi==="papa"?"Es. Chiara":"Es. Marco"} value={personaB.nome} onChange={e=>setB(p=>({...p,nome:e.target.value}))}/></FRow><FRow label="Età"><input type="number" style={iS} placeholder="Es. 30" value={personaB.eta} onChange={e=>setB(p=>({...p,eta:e.target.value}))} min={18} max={80}/></FRow><FRow label="Lavoro"><input style={iS} placeholder="Es. Medico, designer…" value={personaB.lavoro} onChange={e=>setB(p=>({...p,lavoro:e.target.value}))}/></FRow><button onClick={()=>next("persona_b")} style={{width:"100%",padding:"16px",background:C.warm,color:C.surface,border:"none",borderRadius:16,fontSize:16,fontFamily:F,fontWeight:500,cursor:"pointer",marginTop:8}}>Continua →</button><button onClick={()=>next("persona_b")} style={{width:"100%",padding:"12px",background:"none",color:C.faint,border:"none",fontSize:13,fontFamily:F,cursor:"pointer",marginTop:8}}>Salta per ora</button></div></OStepWrap></div></OWrap>);
@@ -483,9 +561,9 @@ function Onboarding({data,setData,onComplete}){
   return null;
 }
 
-function ApptForm({initial,members,onSave,onDelete}){const def={titolo:"",data:"",ora:"",chi:"entrambi",tipo:"bebè",note:""};const [f,setF]=useState(initial?{...def,...initial}:def);const chiOpts=[{v:"entrambi",l:"👫 Entrambi"},...members.map(m=>({v:m.id,l:mEmoji(m.id)+" "+m.nome}))];return(<div><FRow label="Titolo"><input style={iS} placeholder="Es. Visita ostetrica" value={f.titolo} onChange={e=>setF(p=>({...p,titolo:e.target.value}))}/></FRow><div style={{display:"flex",gap:10}}><div style={{flex:1}}><FRow label="Data"><input type="date" style={iS} value={f.data} onChange={e=>setF(p=>({...p,data:e.target.value}))}/></FRow></div><div style={{flex:1}}><FRow label="Ora"><input type="time" style={iS} value={f.ora} onChange={e=>setF(p=>({...p,ora:e.target.value}))}/></FRow></div></div><FRow label="Categoria"><Seg value={f.tipo} onChange={v=>setF(p=>({...p,tipo:v}))} opts={[{v:"bebè",l:"👶"},{v:"lavoro",l:"💼"},{v:"salute",l:"🌿"},{v:"famiglia",l:"🏠"}]}/></FRow><FRow label="Chi"><Seg value={f.chi} onChange={v=>setF(p=>({...p,chi:v}))} opts={chiOpts}/></FRow><FRow label="Note"><input style={iS} placeholder="Note facoltative" value={f.note} onChange={e=>setF(p=>({...p,note:e.target.value}))}/></FRow><PBtn onPress={()=>onSave(f)} color={C.warm} full>{initial?"Salva modifiche":"Aggiungi evento"}</PBtn>{initial&&<div style={{marginTop:10}}><PBtn onPress={onDelete} danger full sm>Elimina evento</PBtn></div>}</div>);}
-function TaskForm({initial,members,onSave,onDelete}){const def={testo:"",cat:"bebè",chi:"entrambi"};const [f,setF]=useState(initial?{...def,...initial}:def);const chiOpts=[{v:"entrambi",l:"👫 Entrambi"},...members.map(m=>({v:m.id,l:mEmoji(m.id)+" "+m.nome}))];return(<div><FRow label="Cosa fare?"><input style={iS} placeholder="Es. Acquistare la carrozzina" value={f.testo} onChange={e=>setF(p=>({...p,testo:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter")onSave(f);}}/></FRow><FRow label="Categoria"><Seg value={f.cat} onChange={v=>setF(p=>({...p,cat:v}))} opts={[{v:"bebè",l:"👶 Bebè"},{v:"lavoro",l:"💼 Lavoro"},{v:"salute",l:"🌿 Salute"},{v:"famiglia",l:"🏠 Famiglia"}]}/></FRow><FRow label="Per chi"><Seg value={f.chi} onChange={v=>setF(p=>({...p,chi:v}))} opts={chiOpts}/></FRow><PBtn onPress={()=>onSave(f)} color={C.warm} full>{initial?"Salva modifiche":"Aggiungi"}</PBtn>{initial&&<div style={{marginTop:10}}><PBtn onPress={onDelete} danger full sm>Elimina</PBtn></div>}</div>);}
-function MemberForm({initial,onSave,onDelete}){const [f,setF]=useState(initial?{nome:initial.nome,lavoro:initial.lavoro||"",role:initial.role}:{nome:"",lavoro:"",role:"altro"});const isCore=initial?.id==="papa"||initial?.id==="mamma";return(<div><FRow label="Nome"><input style={iS} placeholder="Es. Marco" value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))}/></FRow><FRow label="Lavoro"><input style={iS} placeholder="Es. Medico, designer…" value={f.lavoro} onChange={e=>setF(p=>({...p,lavoro:e.target.value}))}/></FRow><FRow label="Ruolo"><Seg value={f.role} onChange={v=>setF(p=>({...p,role:v}))} opts={[{v:"papà",l:"👨 Papà"},{v:"mamma",l:"👩 Mamma"},{v:"altro",l:"👤 Altro"}]}/></FRow><PBtn onPress={()=>onSave(f)} color={C.warm} full>{initial?"Salva modifiche":"Aggiungi"}</PBtn>{initial&&!isCore&&<div style={{marginTop:10}}><PBtn onPress={onDelete} danger full sm>Rimuovi</PBtn></div>}</div>);}
+function ApptForm({initial,members,onSave,onDelete}){const def={titolo:"",data:"",ora:"",chi:"entrambi",tipo:"bebè",note:""};const [f,setF]=useState(initial?{...def,...initial}:def);const isEdit=!!initial?.id;const chiOpts=[{v:"entrambi",l:"👫 Entrambi"},...members.map(m=>({v:m.id,l:mEmoji(m.id,members)+" "+m.nome}))];return(<div><FRow label="Titolo"><input style={iS} placeholder="Es. Visita ostetrica" value={f.titolo} onChange={e=>setF(p=>({...p,titolo:e.target.value}))}/></FRow><div style={{display:"flex",gap:10}}><div style={{flex:1}}><FRow label="Data"><input type="date" style={iS} value={f.data} onChange={e=>setF(p=>({...p,data:e.target.value}))}/></FRow></div><div style={{flex:1}}><FRow label="Ora"><input type="time" style={iS} value={f.ora} onChange={e=>setF(p=>({...p,ora:e.target.value}))}/></FRow></div></div><FRow label="Categoria"><Seg value={f.tipo} onChange={v=>setF(p=>({...p,tipo:v}))} opts={[{v:"bebè",l:"👶"},{v:"lavoro",l:"💼"},{v:"salute",l:"🌿"},{v:"famiglia",l:"🏠"}]}/></FRow><FRow label="Chi"><Seg value={f.chi} onChange={v=>setF(p=>({...p,chi:v}))} opts={chiOpts}/></FRow><FRow label="Note"><input style={iS} placeholder="Note facoltative" value={f.note} onChange={e=>setF(p=>({...p,note:e.target.value}))}/></FRow><PBtn onPress={()=>onSave(f)} color={C.warm} full>{isEdit?"Salva modifiche":"Aggiungi evento"}</PBtn>{isEdit&&onDelete&&<div style={{marginTop:10}}><PBtn onPress={onDelete} danger full sm>Elimina evento</PBtn></div>}</div>);}
+function TaskForm({initial,members,onSave,onDelete}){const def={testo:"",cat:"bebè",chi:"entrambi"};const [f,setF]=useState(initial?{...def,...initial}:def);const isEdit=!!initial?.id;const chiOpts=[{v:"entrambi",l:"👫 Entrambi"},...members.map(m=>({v:m.id,l:mEmoji(m.id,members)+" "+m.nome}))];return(<div><FRow label="Cosa fare?"><input style={iS} placeholder="Es. Acquistare la carrozzina" value={f.testo} onChange={e=>setF(p=>({...p,testo:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter")onSave(f);}}/></FRow><FRow label="Categoria"><Seg value={f.cat} onChange={v=>setF(p=>({...p,cat:v}))} opts={[{v:"bebè",l:"👶 Bebè"},{v:"lavoro",l:"💼 Lavoro"},{v:"salute",l:"🌿 Salute"},{v:"famiglia",l:"🏠 Famiglia"}]}/></FRow><FRow label="Per chi"><Seg value={f.chi} onChange={v=>setF(p=>({...p,chi:v}))} opts={chiOpts}/></FRow><PBtn onPress={()=>onSave(f)} color={C.warm} full>{isEdit?"Salva modifiche":"Aggiungi"}</PBtn>{isEdit&&onDelete&&<div style={{marginTop:10}}><PBtn onPress={onDelete} danger full sm>Elimina</PBtn></div>}</div>);}
+function MemberForm({initial,onSave,onDelete}){const [f,setF]=useState(initial?{nome:initial.nome,lavoro:initial.lavoro||"",role:initial.role}:{nome:"",lavoro:"",role:"altro"});const isCore=initial?.id==="papa"||initial?.id==="mamma";return(<div><FRow label="Nome"><input style={iS} placeholder="Es. Marco" value={f.nome} onChange={e=>setF(p=>({...p,nome:e.target.value}))}/></FRow><FRow label="Lavoro"><input style={iS} placeholder="Es. Medico, designer…" value={f.lavoro} onChange={e=>setF(p=>({...p,lavoro:e.target.value}))}/></FRow><FRow label="Ruolo"><Seg value={f.role} onChange={v=>setF(p=>({...p,role:v}))} opts={[{v:"papà",l:"👨 Papà"},{v:"mamma",l:"👩 Mamma"},{v:"altro",l:"👤 Altro"}]}/></FRow><PBtn onPress={()=>onSave(f)} color={C.warm} full>{initial?"Salva modifiche":"Aggiungi"}</PBtn>{initial&&!isCore&&onDelete&&<div style={{marginTop:10}}><PBtn onPress={onDelete} danger full sm>Rimuovi</PBtn></div>}</div>);}
 function AddCheckForm({setData,onClose,fire}){const [v,setV]=useState("");const save=()=>{if(!v.trim())return;setData(d=>({...d,baby:{...d.baby,check:[...d.baby.check,{id:uid(),item:v.trim(),fatto:false}]}}));onClose();fire("✓","Aggiunto",v);};return(<div><FRow label="Cosa aggiungere?"><input style={iS} placeholder="Es. Pannolini, copertina…" value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save();}}/></FRow><PBtn onPress={save} color={C.warm} full>Aggiungi</PBtn></div>);}
 
 const CSS=`
@@ -510,7 +588,7 @@ const CSS=`
 export default function App(){
   const [data,setData,sync]=useStore();
   const [tab,setTab]=useState("home");
-  const [userId,setUserId]=useState(null);
+  const [userId,setUserId]=useState(()=>{try{return localStorage.getItem("nido_user_id");}catch{return null;}});
   const [toast,setToast]=useState(null);
   const [sheet,setSheet]=useState(null);
   const [grilloContext,setGrilloContext]=useState(null);
@@ -520,6 +598,13 @@ export default function App(){
   const grillo=useGrillo(data,userId,tab);
 
   useEffect(()=>{
+    if(userId && data?.members && !data.members.some(m=>m.id===userId)){
+      setUserId(null);
+      try{localStorage.removeItem("nido_user_id");}catch{}
+    }
+  },[data.members,userId]);
+
+  useEffect(()=>{
     if(!userId)return;
     const R=[{hm:"08:00",icon:"☀️",title:"Buongiorno!",body:"Inizia con un bicchiere d'acqua."},{hm:"13:00",icon:"🥗",title:"Pranzo",body:"Ricordati degli integratori di oggi."},{hm:"15:30",icon:"💧",title:"Acqua",body:"Idratati nel pomeriggio!"},{hm:"20:00",icon:"❤️",title:"Famiglia",body:"Stacca. Godetevi questo tempo insieme."},{hm:"22:00",icon:"🌙",title:"Buonanotte",body:"Dormite bene."}];
     const id=setInterval(()=>{const now=new Date();const hm=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");const r=R.find(x=>x.hm===hm);if(r)setToast(r);},60000);
@@ -527,7 +612,7 @@ export default function App(){
     return()=>clearInterval(id);
   },[userId]);
 
-  if(!data.onboardingDone)return(<><style>{CSS}</style><Onboarding data={data} setData={setData} onComplete={id=>{setUserId(id);setTab("home");}}/></>);
+  if(!data.onboardingDone)return(<><style>{CSS}</style><Onboarding data={data} setData={setData} onComplete={id=>{setUserId(id);try{localStorage.setItem("nido_user_id",id);}catch{}setTab("home");}}/></>);
 
   if(!userId)return(
     <div style={{fontFamily:F,background:C.bg,minHeight:"100vh",maxWidth:430,margin:"0 auto",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"0 0 60px"}}>
@@ -536,7 +621,8 @@ export default function App(){
         <div style={{fontSize:11,color:C.faint,fontFamily:M,letterSpacing:4,marginBottom:16,textTransform:"uppercase"}}>NIDO</div>
         <div style={{fontSize:38,fontWeight:400,fontStyle:"italic",color:C.warm,lineHeight:1.1,marginBottom:8,letterSpacing:"-1px"}}>Nido</div>
         <div style={{fontSize:15,color:C.sub,lineHeight:1.7,marginBottom:40}}>Bentornati.<br/><span style={{fontSize:13,color:C.faint}}>Chi sei?</span></div>
-        {data.members.map(m=>(<button key={m.id} onClick={()=>setUserId(m.id)} style={{display:"flex",alignItems:"center",gap:16,width:"100%",padding:"18px 22px",borderRadius:22,border:"1.5px solid "+m.color+"30",background:C.surface,cursor:"pointer",marginBottom:12,fontFamily:F,textAlign:"left",boxShadow:C.sh}}><div style={{width:52,height:52,borderRadius:18,background:m.color+"14",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>{mEmoji(m.id)}</div><div><div style={{fontSize:17,fontWeight:500,color:C.text,marginBottom:3}}>{m.nome}</div><div style={{fontSize:13,color:C.sub}}>{m.lavoro||m.role}</div></div><div style={{marginLeft:"auto",fontSize:20,color:C.faint}}>›</div></button>))}
+        {data.members.map(m=>(<button key={m.id} onClick={()=>{setUserId(m.id);try{localStorage.setItem("nido_user_id",m.id);}catch{}}} style={{display:"flex",alignItems:"center",gap:16,width:"100%",padding:"18px 22px",borderRadius:22,border:"1.5px solid "+m.color+"30",background:C.surface,cursor:"pointer",marginBottom:12,fontFamily:F,textAlign:"left",boxShadow:C.sh}}><div style={{width:52,height:52,borderRadius:18,background:m.color+"14",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>{mEmoji(m.id,data.members)}</div><div><div style={{fontSize:17,fontWeight:500,color:C.text,marginBottom:3}}>{m.nome}</div><div style={{fontSize:13,color:C.sub}}>{m.lavoro||m.role}</div></div><div style={{marginLeft:"auto",fontSize:20,color:C.faint}}>›</div></button>))}
+        <div style={{marginTop:8}}><JoinCard/></div>
       </div>
     </div>
   );
@@ -547,19 +633,19 @@ export default function App(){
     if(!sheet)return null;
     const {type,payload}=sheet;
     const w=(title,children)=><Sheet title={title} onClose={closeSheet}>{children}</Sheet>;
-    if(type==="appt")return w("Nuovo evento",<ApptForm members={data.members} onSave={f=>{if(!f.titolo||!f.data)return;setData(d=>({...d,appuntamenti:[...d.appuntamenti,{...f,id:uid()}]}));closeSheet();fire("📅","Aggiunto",f.titolo);}}/>);
+    if(type==="appt")return w("Nuovo evento",<ApptForm initial={payload} members={data.members} onSave={f=>{if(!f.titolo||!f.data)return;setData(d=>({...d,appuntamenti:[...d.appuntamenti,{...f,id:uid()}]}));closeSheet();fire("📅","Aggiunto",f.titolo);}}/>);
     if(type==="editAppt")return w("Modifica evento",<ApptForm initial={payload} members={data.members} onSave={f=>{setData(d=>({...d,appuntamenti:d.appuntamenti.map(a=>a.id===payload.id?{...a,...f}:a)}));closeSheet();fire("✓","Aggiornato",f.titolo);}} onDelete={()=>{setData(d=>({...d,appuntamenti:d.appuntamenti.filter(a=>a.id!==payload.id)}));closeSheet();fire("🗑","Eliminato",payload.titolo);}}/>);
-    if(type==="task")return w("Nuova task",<TaskForm initial={payload?{cat:payload}:null} members={data.members} onSave={f=>{if(!f.testo.trim())return;setData(d=>({...d,tasks:[...d.tasks,{...f,id:uid(),fatto:false}]}));closeSheet();fire("✓","Aggiunta",f.testo);}}/>);
+    if(type==="task")return w("Nuova task",<TaskForm initial={payload?{cat:typeof payload==="string"?payload:payload.cat||"bebè"}:null} members={data.members} onSave={f=>{if(!f.testo.trim())return;setData(d=>({...d,tasks:[...d.tasks,{...f,id:uid(),fatto:false}]}));closeSheet();fire("✓","Aggiunta",f.testo);}}/>);
     if(type==="editTask")return w("Modifica task",<TaskForm initial={payload} members={data.members} onSave={f=>{setData(d=>({...d,tasks:d.tasks.map(t=>t.id===payload.id?{...t,...f}:t)}));closeSheet();fire("✓","Aggiornata",f.testo);}} onDelete={()=>{setData(d=>({...d,tasks:d.tasks.filter(t=>t.id!==payload.id)}));closeSheet();fire("🗑","Eliminata",payload.testo);}}/>);
     if(type==="editBaby")return w("Modifica gravidanza",<div><FRow label="Settimane"><input type="number" min={1} max={42} style={iS} value={data.baby.settimane} onChange={e=>setData(d=>({...d,baby:{...d.baby,settimane:Math.max(1,Math.min(42,+e.target.value))}}))} /></FRow><FRow label="Nome"><input style={iS} placeholder="Es. Sofia…" value={data.baby.nome||""} onChange={e=>setData(d=>({...d,baby:{...d.baby,nome:e.target.value}}))}/></FRow><FRow label="Data presunta"><input type="date" style={iS} value={data.baby.dataPresunta||""} onChange={e=>setData(d=>({...d,baby:{...d.baby,dataPresunta:e.target.value}}))}/></FRow><PBtn onPress={closeSheet} color={C.warm} full>Fatto</PBtn></div>);
     if(type==="addCheck")return w("Aggiungi alla nursery",<AddCheckForm setData={setData} onClose={closeSheet} fire={fire}/>);
     if(type==="addMember")return w("Aggiungi membro",<MemberForm onSave={f=>{if(!f.nome)return;setData(d=>({...d,members:[...d.members,{...makeMember(uid(),f.role,C.sage),...f}]}));closeSheet();fire("👋","Benvenuto!",f.nome);}}/>);
-    if(type==="editMember")return w("Modifica",<MemberForm initial={payload} onSave={f=>{setData(d=>({...d,members:d.members.map(m=>m.id===payload.id?{...m,...f}:m)}));closeSheet();fire("✓","Aggiornato",f.nome);}} onDelete={()=>{setData(d=>({...d,members:d.members.filter(m=>m.id!==payload.id)}));closeSheet();fire("🗑","Rimosso",payload.nome);}}/>);
+    if(type==="editMember")return w("Modifica",<MemberForm initial={payload} onSave={f=>{setData(d=>({...d,members:d.members.map(m=>m.id===payload.id?{...m,...f,color:f.role?roleColor(f.role):m.color}:m)}));closeSheet();fire("✓","Aggiornato",f.nome);}} onDelete={()=>{setData(d=>({...d,members:d.members.filter(m=>m.id!==payload.id)}));if(userId===payload.id){setUserId(null);try{localStorage.removeItem("nido_user_id");}catch{}}closeSheet();fire("🗑","Rimosso",payload.nome);}}/>);
     return null;
   };
 
-  const NAV=[{id:"home",icon:"⌂",label:"Home"},{id:"baby",icon:"👶",label:"Bebè"},{id:"salute",icon:"🌿",label:"Salute"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"market",icon:"🛍️",label:"Market"},{id:"ai",icon:"✦",label:"AI"}];
-  const PAGES={home:<Home data={data} setData={setData} userId={userId} openSheet={openSheet} fire={fire}/>,baby:<Baby data={data} setData={setData} openSheet={openSheet}/>,salute:<Salute data={data} setData={setData} userId={userId}/>,agenda:<Agenda data={data} setData={setData} openSheet={openSheet}/>,market:<Market/>,ai:<AI data={data} userId={userId} grilloMsg={grilloContext}/>};
+  const NAV=[{id:"home",icon:"⌂",label:"Home"},{id:"baby",icon:"👶",label:"Bebè"},{id:"salute",icon:"🌿",label:"Salute"},{id:"agenda",icon:"📅",label:"Agenda"},{id:"famiglia",icon:"🏠",label:"Famiglia"},{id:"market",icon:"🛍️",label:"Market"},{id:"ai",icon:"✦",label:"AI"}];
+  const PAGES={home:<Home data={data} setData={setData} userId={userId} openSheet={openSheet} fire={fire}/>,baby:<Baby data={data} setData={setData} openSheet={openSheet}/>,salute:<Salute data={data} setData={setData} userId={userId}/>,agenda:<Agenda data={data} setData={setData} openSheet={openSheet}/>,famiglia:<Famiglia data={data} setData={setData} openSheet={openSheet} familyCode={sync.familyCode}/>,market:<Market/>,ai:<AI data={data} userId={userId} grilloMsg={grilloContext}/>};
 
   return(
     <div style={{fontFamily:F,background:C.bg,color:C.text,minHeight:"100vh",maxWidth:430,margin:"0 auto",position:"relative"}}>
@@ -577,7 +663,7 @@ export default function App(){
           </div>
           <div style={{fontSize:19,fontWeight:300,color:C.text}}>The home <span style={{color:C.warm,fontWeight:500,fontStyle:"italic"}}>your family always deserved.</span></div>
         </div>
-        <button onClick={()=>setUserId(null)} style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:22,background:C.surface,border:"1.5px solid "+(me?.color||C.warm)+"28",color:me?.color||C.warm,fontSize:13,cursor:"pointer",fontWeight:500,boxShadow:C.sh}}>{mEmoji(userId)+" "+(me?.nome||"")}</button>
+        <button onClick={()=>{setUserId(null);try{localStorage.removeItem("nido_user_id");}catch{}}} style={{display:"flex",alignItems:"center",gap:7,padding:"8px 14px",borderRadius:22,background:C.surface,border:"1.5px solid "+(me?.color||C.warm)+"28",color:me?.color||C.warm,fontSize:13,cursor:"pointer",fontWeight:500,boxShadow:C.sh}}>{mEmoji(userId,data.members)+" "+(me?.nome||"")}</button>
       </div>
       <div style={{padding:"18px 16px 110px",overflowY:"auto",height:"calc(100vh - 82px)"}}>
         <PageFade tabKey={tab}>{PAGES[tab]||PAGES.home}</PageFade>

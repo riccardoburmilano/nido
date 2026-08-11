@@ -26,10 +26,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Add .nojekyll
-        run: touch dist/.nojekyll
+        run: touch docs/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: docs
 
   deploy:
     needs: build

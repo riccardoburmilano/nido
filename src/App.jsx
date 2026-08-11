@@ -127,13 +127,62 @@ function useStore(){
   return [d,setD,{syncOk,syncing,familyCode}];
 }
 
+function localTip(data,userId,tab){
+  const me=data.members.find(m=>m.id===userId);
+  const sw=data.baby.settimane;
+  const info=getPD(sw);
+  const prox=[...data.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||0);
+  const acqua=me?.salute?.acqua||0;
+  const goal=me?.salute?.acquaObiettivo||8;
+  const tips={
+    home: acqua<goal
+      ? `${me?.nome||"Ciao"}, sei a ${acqua}/${goal} bicchieri. Un sorso ora ti aiuta — e ricorda: ${info.urgente}`
+      : prox[0]
+        ? `Brava/o con l'acqua! Prossimo impegno: ${prox[0].titolo}${prox[0].data?` il ${fmtDate(prox[0].data)}`:""}.`
+        : `Settimana ${sw}: ${info.headline}`,
+    baby: `${info.headline} ${info.urgente}`,
+    salute: (info.medicine||[])[0]
+      ? `Questa settimana non dimenticare ${info.medicine[0].nome} (${info.medicine[0].dose}). Consulta sempre il ginecologo.`
+      : `Come stai oggi? Segna il benessere e bevi un bicchiere d'acqua.`,
+    agenda: prox[0]
+      ? `In agenda: ${prox[0].titolo}${prox[0].ora?` alle ${prox[0].ora}`:""}. Vuoi aggiungere altro?`
+      : `Nessun impegno in vista. Vale la pena prenotare i controlli della settimana ${sw}.`,
+    famiglia: `Condividi il codice famiglia con il partner così restano sincronizzati appuntamenti e task.`,
+    market: `Per la settimana ${sw} può servire: ${(info.medicine||[]).map(m=>m.nome).slice(0,2).join(" e ")||"integratori raccomandati"}.`,
+    ai: `Sono qui per gravidanza, medicine e burocrazia. Prova una delle domande rapide qui sotto.`,
+  };
+  return tips[tab]||tips.home;
+}
+
+function localAIAnswer(msg,data,userId){
+  const q=(msg||"").toLowerCase();
+  const sw=data.baby.settimane;
+  const info=getPD(sw);
+  const me=data.members.find(m=>m.id===userId);
+  if(/settimana|succede|beb[eè]|feto|bambin/.test(q))
+    return `Alla settimana ${sw} (${info.tri}° trimestre) il bebè è grande come ${info.s} (${info.dim}, ${info.peso}). ${info.headline} ${info.dev} Per dubbi clinici parla sempre con il tuo ginecologo.`;
+  if(/morfologic/.test(q))
+    return `L'ecografia morfologica si fa di solito tra la 18ª e la 21ª settimana. Serve a controllare anatomia, crescita e liquido amniotico. Prenotala per tempo: è l'esame chiave del secondo trimestre.`;
+  if(/integratori|medicine|folico|ferro|omega|paracetamolo|nausea/.test(q)){
+    const meds=(info.medicine||[]).map(m=>`• ${m.nome} ${m.dose} — ${m.motivo}`).join("\n")||"Segui le indicazioni del ginecologo.";
+    return `Per la settimana ${sw} le linee guida suggeriscono:\n${meds}\n\nIl paracetamolo è spesso considerato, ma dose e durata vanno confermate dal medico. Non iniziare integratori senza consulto.`;
+  }
+  if(/assegno|inps|bonus|isee|congedo|paternit|maternit|lavoro|diritti/.test(q))
+    return `In sintesi (Italia):\n• Assegno unico: richiedibile dal 7° mese via INPS/CAF.\n• Congedo paternità: 10 giorni obbligatori (+1 facoltativo) entro 5 mesi, retribuiti al 100%.\n• Congedo maternità: 5 mesi totali, indennità INPS ~80%.\n• Bonus bebè / ISEE: verifica requisiti aggiornati su inps.it.\nPer pratiche ufficiali usa il portale INPS o un CAF.`;
+  if(/dolor|dormire|sonno|acqua|bere/.test(q))
+    return `Dolori leggeri e stanchezza sono comuni intorno alla settimana ${sw}, ma dolore intenso, sanguinamento o movimenti ridotti richiedono pronto soccorso. Per il sonno: cuscino tra le ginocchia, lato sinistro se possibile. Obiettivo acqua: ${me?.salute?.acquaObiettivo||8} bicchieri/giorno.`;
+  return `Settimana ${sw}: ${info.headline}\nPriorità ora: ${info.urgente}\n\nPosso aiutarti su gravidanza, medicine, INPS/ASL e diritti. Scrivi pure la domanda in modo più specifico — e per decisioni sanitarie affidati al ginecologo.`;
+}
+
 function useGrillo(data,userId,tab){
   const [bubble,setBubble]=useState(null);
   const [loading,setLoading]=useState(false);
   const seenRef=useRef(new Set());
   const timerRef=useRef(null);
+  const dataRef=useRef(data);
+  dataRef.current=data;
   useEffect(()=>{
-    if(!userId||!data)return;
+    if(!userId||!dataRef.current)return;
     const key=tab+"-"+Math.floor(Date.now()/300000);
     if(seenRef.current.has(key))return;
     clearTimeout(timerRef.current);
@@ -142,17 +191,19 @@ function useGrillo(data,userId,tab){
       if(seenRef.current.has(key))return;
       seenRef.current.add(key);
       setLoading(true);
-      const me=data.members.find(m=>m.id===userId);
-      const sw=data.baby.settimane;
-      const info=getPD(sw);
-      const prox=[...data.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||String(a.ora||"").localeCompare(String(b.ora||"")));
-      const sys="Sei il Grillo Parlante di NIDO. Dati: settimana "+sw+"/40. "+me?.nome+" e nella sezione '"+tab+"'. Acqua: "+(me?.salute?.acqua||0)+"/"+(me?.salute?.acquaObiettivo||8)+". Prossimo appuntamento: "+(prox[0]?prox[0].titolo+" il "+prox[0].data:"nessuno")+". Ora: "+new Date().getHours()+":00. "+info.headline+" "+info.urgente+". Genera UN SOLO suggerimento proattivo, max 2 frasi, pertinente alla sezione. Solo il testo.";
+      const d=dataRef.current;
+      let txt=null;
       try{
+        const me=d.members.find(m=>m.id===userId);
+        const sw=d.baby.settimane;
+        const info=getPD(sw);
+        const prox=[...d.appuntamenti].filter(a=>isUpcoming(a.data)).sort((a,b)=>(parseYMD(a.data)-parseYMD(b.data))||0);
+        const sys="Sei il Grillo Parlante di NIDO. Dati: settimana "+sw+"/40. "+me?.nome+" e nella sezione '"+tab+"'. Acqua: "+(me?.salute?.acqua||0)+"/"+(me?.salute?.acquaObiettivo||8)+". Prossimo appuntamento: "+(prox[0]?prox[0].titolo+" il "+prox[0].data:"nessuno")+". Ora: "+new Date().getHours()+":00. "+info.headline+" "+info.urgente+". Genera UN SOLO suggerimento proattivo, max 2 frasi, pertinente alla sezione. Solo il testo.";
         const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:120,system:sys,messages:[{role:"user",content:"Suggerimento"}]})});
         const d2=await r.json();
-        const txt=d2.content?.[0]?.text;
-        if(txt)setBubble(txt);
+        txt=d2.content?.[0]?.text||null;
       }catch{}
+      setBubble(txt||localTip(d,userId,tab));
       setLoading(false);
     },3500);
     return()=>clearTimeout(timerRef.current);
@@ -456,7 +507,7 @@ function AI({data,userId,grilloMsg}){
   const info=getPD(data.baby.settimane);
   const cats=[{l:"🤱 Gravidanza",qs:["Cosa succede alla settimana "+data.baby.settimane+"?","Quando fare la morfologica?","Dolori normali in gravidanza?","Come dormire meglio?"]},{l:"💊 Medicine",qs:["Quali integratori alla settimana "+data.baby.settimane+"?","Posso prendere il paracetamolo?","Cosa fare per la nausea?","Integratori per il papà?"]},{l:"📋 Burocrazia",qs:["Come richiedere l'assegno unico?","Congedo paternità: come funziona?","Bonus bebè INPS 2026?","Come calcolare l'ISEE?"]},{l:"💼 Diritti",qs:["Quando comunicare la gravidanza al lavoro?","Diritti in gravidanza?","Congedo maternità: quanti mesi?","Quanti giorni di paternità ho?"]}];
   const sys="Sei un assistente familiare italiano esperto. Parli con "+(me?.nome||"un genitore")+" ("+me?.role+"). Gravidanza: settimana "+data.baby.settimane+"/40, "+info.tri+"° trimestre. "+info.headline+" Medicine raccomandate: "+((info.medicine||[]).map(m=>m.nome+" "+m.dose).join(", "))+". Rispondi in italiano, tono caldo. Max 4-5 frasi. Per medicine, indica sempre di consultare il ginecologo.";
-  const send=async(txt)=>{const msg=txt||inp.trim();if(!msg||loading)return;setInp("");setMsgs(p=>[...p,{role:"user",text:msg}]);setLoading(true);try{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...msgs.filter((_,i)=>i>0).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.text})),{role:"user",content:msg}]})});const d=await r.json();const txtOut=d.content?.[0]?.text;setMsgs(p=>[...p,{role:"assistant",text:txtOut||(d.error?.message?"Assistente non disponibile al momento. Riprova più tardi.":"Non riesco a rispondere ora.")}]);}catch{setMsgs(p=>[...p,{role:"assistant",text:"Connessione assente. Riprova."}]);}setLoading(false);};
+  const send=async(txt)=>{const msg=txt||inp.trim();if(!msg||loading)return;setInp("");setMsgs(p=>[...p,{role:"user",text:msg}]);setLoading(true);try{const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:sys,messages:[...msgs.filter((_,i)=>i>0).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.text})),{role:"user",content:msg}]})});const d=await r.json();const txtOut=d.content?.[0]?.text;setMsgs(p=>[...p,{role:"assistant",text:txtOut||localAIAnswer(msg,data,userId)}]);}catch{setMsgs(p=>[...p,{role:"assistant",text:localAIAnswer(msg,data,userId)}]);}setLoading(false);};
   return (
     <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 160px)"}}>
       <div style={{flex:1,overflowY:"auto",paddingBottom:8}}>
